@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.version       = Riron::VERSION
   spec.authors       = ["Jan Algermissen"]
   spec.email         = ["algermissen@acm.org"]
-  spec.summary       = %q{TODO: Write a short summary. Required.}
-  spec.description   = %q{TODO: Write a longer description. Optional.}
+  spec.summary       = %q{This is a Ruby implementation of iron}
+  spec.description   = %q{riron is a cryptographic utility for sealing a JSON object using symmetric key encryption with message integrity verification.}
   spec.homepage      = ""
   spec.license       = "MIT"
 
