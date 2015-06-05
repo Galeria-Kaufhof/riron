@@ -1,9 +1,6 @@
 module Riron
 
-  class RironException < StandardError
-
-  end
-
+  class RironException < StandardError ; end
   class RironIntegrityException < RironException
     attr_reader :token
 

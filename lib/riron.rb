@@ -1,10 +1,11 @@
+require "securerandom"
+require 'openssl'
+require 'base64'
+
 require "riron/version"
 require "riron/algorithm"
 require "riron/options"
 require "riron/exception"
-require "securerandom"
-require 'openssl'
-require 'base64'
 
 module Riron
 
@@ -59,8 +60,13 @@ module Riron
     encrypted_data_safe_base64.gsub!('=', '')
 
     # construct the base string for which we'll create the HMAC later on
-    parts = [MAC_PREFIX, password_id ? password_id : '', encryption_salt, encryption_iv_safe_base64, encrypted_data_safe_base64]
-    base_string = parts.join(DELIMITER)
+    base_string = [
+      MAC_PREFIX,
+      password_id ? password_id : '',
+      encryption_salt,
+      encryption_iv_safe_base64,
+      encrypted_data_safe_base64
+    ].join(DELIMITER)
 
     # Create integrity HMAC
     integrity_salt = generate_salt(int_opts.salt_bits)
@@ -87,30 +93,23 @@ module Riron
   #
   # @return [String] The unsealed data as a UTF8-encoded String
   def unseal(data, password_info, enc_opts, int_opts)
-
     parts = data.split(DELIMITER)
-    if (parts.length != 7)
+
+    if parts.length != 7
       raise RironIntegrityException.new(data), "Wrong number of token parts; split returned #{parts.length} parts"
     end
 
     prefix, password_id, encryption_salt, encryption_iv_safe_base64, encrypted_data_safe_base64, integrity_salt, hmac_safe_base64 = parts
+    base_string = parts[0..4].join(DELIMITER) # Reconstruct base string for HMAC checking
 
-    # Reconstruct base string for HMAC checking
-    # FIXME: This is subject to optimization later on
-    base_string = [prefix, password_id, encryption_salt, encryption_iv_safe_base64, encrypted_data_safe_base64].join(DELIMITER)
-
-    # Iron fixed prefix check
-    if (prefix != MAC_PREFIX)
-      raise RironIntegrityException.new(data), "Incorrect prefix #{prefix}"
-    end
+    raise RironIntegrityException.new(data), "Incorrect prefix #{prefix}" unless prefix == MAC_PREFIX
 
     # Are we dealing with a password map or single password?
-    if (password_info.is_a?(Hash))
-      if (password_id.empty?)
+    if password_info.is_a?(Hash)
+      if password_id.empty?
         raise RironException, "Using password hash for unsealing requires password ID in token"
       end
-      password = password_info[password_id]
-      if (!password)
+      unless password = password_info[password_id]
         raise RironException, "No password found in password hash for password ID #{password_id}"
       end
     else
@@ -121,7 +120,7 @@ module Riron
     hmac = base64_urlsafe_decode_padding_tolerant(hmac_safe_base64)
     check_hmac = calculate_hmac(password, base_string, integrity_salt, int_opts.algorithm, int_opts.iterations)
 
-    if(!constant_time_array_equal(hmac,check_hmac))
+    unless constant_time_array_equal(hmac,check_hmac)
       raise RironIntegrityException.new(data), "Invalid integrity signature #{hmac_safe_base64}"
     end
 
@@ -134,14 +133,8 @@ module Riron
     cipher.decrypt
     cipher.iv = encryption_iv
     cipher.key = secure_key
-
-    decrypted = cipher.update(encrypted_data)
-    decrypted << cipher.final
-
-    decrypted
-
+    cipher.update(encrypted_data) << cipher.final
   end
-
 
   # Generate an initialization vector.
   # Unlike generate_salt() this method returns a byte array, that needs to be
@@ -152,8 +145,7 @@ module Riron
   #
   # @return [Array<Byte>] The initialization vector
   def generate_iv(nbits)
-    n = nbits.fdiv(8).ceil
-    SecureRandom.random_bytes(n)
+    SecureRandom.random_bytes nbits.fdiv(8).ceil
   end
 
 
@@ -168,8 +160,7 @@ module Riron
   #
   # @return [Array<Byte>] The salt in hex-encoded form.
   def generate_salt(nbits)
-    n = nbits.fdiv(8).ceil
-    SecureRandom.hex(n)
+    SecureRandom.hex nbits.fdiv(8).ceil
   end
 
   # Generates a secure key from a given password using PKCS5 PBKDF2 HMAC with
@@ -211,10 +202,8 @@ module Riron
   #
   # @return [String] The decoded, UTF-8 encoded string
   def base64_urlsafe_decode_padding_tolerant(str)
-    n = 4 - str.length.modulo(4)
-    if(n == 4) 
-      n = 0
-    end
+    n = 4 - str.size % 4
+    n = 0 if n == 4
     str += '=' * n
     Base64.urlsafe_decode64(str)
   end
@@ -225,22 +214,14 @@ module Riron
   # @param rhs [Array<Byte>]
   #
   # @return [Boolean] true if arrays are equal, false otherwise
-  def constant_time_array_equal(lhs,rhs)
-    equal = (lhs.length == rhs.length ? true : false)
+  def constant_time_array_equal(lhs, rhs)
+    equal = lhs.length == rhs.length
 
     # If not equal so far, work on a single operand to have same length.
-    rhs = lhs if(!equal)
+    rhs = lhs unless equal
 
-    len = lhs.length
-    for i in 0..len
-        if (lhs[i] == rhs[i])
-            equal = equal && true
-        else
-            equal = equal && false
-        end
-
-        return equal
+    lhs.length.times.reduce(equal) do |result, index|
+      result && lhs[index] == rhs[index]
     end
-
   end
 end

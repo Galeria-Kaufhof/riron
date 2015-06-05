@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    riron (0.0.3)
+    riron (0.0.4)
 
 GEM
   remote: https://rubygems.org/
